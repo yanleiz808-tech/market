@@ -1,0 +1,386 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>美股盘前头条聚合</title>
+<!-- 手机"添加到主屏"小应用:全屏、深色状态栏、专属名 -->
+<meta name="theme-color" content="#0d1117" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="盘前头条" />
+<style>
+  :root{
+    --bg:#0d1117; --panel:#161b22; --border:#283041; --text:#e6edf3;
+    --muted:#8b98a5; --accent:#26d07c; --accent2:#3b82f6; --err:#f85149;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);
+    font-family:-apple-system,"Segoe UI",Roboto,"Microsoft YaHei",sans-serif;}
+  header{position:sticky;top:0;z-index:5;background:rgba(13,17,23,.92);
+    backdrop-filter:blur(8px);border-bottom:1px solid var(--border);
+    padding:14px 20px;display:flex;align-items:center;gap:16px;flex-wrap:wrap;}
+  h1{font-size:18px;margin:0;font-weight:700;letter-spacing:.5px}
+  h1 .dot{color:var(--accent)}
+  .spacer{flex:1}
+  .meta{color:var(--muted);font-size:13px}
+  button#refresh{background:var(--accent);color:#06281a;border:none;
+    padding:9px 18px;border-radius:8px;font-weight:700;font-size:14px;cursor:pointer;
+    transition:filter .15s}
+  button#refresh:hover{filter:brightness(1.08)}
+  button#refresh:disabled{opacity:.6;cursor:wait}
+  main{padding:18px 20px 60px;
+    display:grid;gap:16px;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));}
+  .card{background:var(--panel);border:1px solid var(--border);border-radius:12px;
+    overflow:hidden;display:flex;flex-direction:column;min-height:120px}
+  .card-head{display:flex;align-items:center;gap:8px;padding:11px 14px;
+    border-bottom:1px solid var(--border);background:#1a2230}
+  .card-head .name{font-weight:700;font-size:14px}
+  .card-head .status{margin-left:auto;font-size:12px;color:var(--muted)}
+  .card-head .retry{background:none;border:1px solid var(--border);color:var(--muted);
+    border-radius:6px;font-size:12px;padding:2px 8px;cursor:pointer}
+  ul{list-style:none;margin:0;padding:6px 0;flex:1}
+  li{padding:9px 14px;border-bottom:1px solid rgba(40,48,65,.5)}
+  li:last-child{border-bottom:none}
+  li a{color:var(--text);text-decoration:none;font-size:14px;line-height:1.45;
+    display:block}
+  li a:hover{color:var(--accent)}
+  li .tl-line{color:#aab6c4;font-size:13px;line-height:1.45;margin-top:4px}
+  li .tl-line.pending{opacity:.45;font-style:italic}
+  li .t{color:var(--muted);font-size:11.5px;margin-top:3px}
+  .toggle{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--muted);
+    cursor:pointer;user-select:none}
+  .toggle input{accent-color:var(--accent);width:15px;height:15px;cursor:pointer}
+  .empty,.loading,.error{padding:16px 14px;color:var(--muted);font-size:13px}
+  .error{color:var(--err)}
+  .note{padding:0 20px 30px;color:var(--muted);font-size:12px;line-height:1.6}
+  .spin{display:inline-block;width:12px;height:12px;border:2px solid var(--muted);
+    border-top-color:transparent;border-radius:50%;animation:s .7s linear infinite;
+    vertical-align:-1px;margin-right:5px}
+  @keyframes s{to{transform:rotate(360deg)}}
+  /* 刘海/灵动岛安全区(全屏 App 模式下) */
+  @supports(padding:env(safe-area-inset-top)){
+    header{padding-top:calc(14px + env(safe-area-inset-top));
+      padding-left:calc(20px + env(safe-area-inset-left));
+      padding-right:calc(20px + env(safe-area-inset-right))}
+    main{padding-bottom:calc(60px + env(safe-area-inset-bottom))}
+  }
+  /* 手机版:单列、更大触摸目标、标题独占一行 */
+  @media(max-width:480px){
+    header{gap:8px 12px;padding-bottom:12px}
+    .spacer{flex-basis:100%;height:0;order:1}      /* 强制换行:标题/刷新一行,开关/时间一行 */
+    h1{font-size:17px;order:0}
+    button#refresh{order:0;margin-left:auto;padding:11px 22px;font-size:15px}
+    .toggle{order:2;font-size:14px}
+    #lastUpdated{order:2;margin-left:auto}
+    main{grid-template-columns:1fr;padding:12px;gap:12px}
+    .card-head{padding:13px 14px}
+    .card-head .retry{padding:6px 13px;font-size:13px}
+    li{padding:12px 14px}
+    li a{font-size:15px}
+    li .tl-line{font-size:13.5px}
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>美股盘前头条 <span class="dot">●</span></h1>
+  <div class="spacer"></div>
+  <label class="toggle"><input type="checkbox" id="bi" checked> 中英对照</label>
+  <span class="meta" id="lastUpdated">尚未刷新</span>
+  <button id="refresh">⟳ 刷新</button>
+</header>
+
+<main id="grid"></main>
+
+<div class="note">
+  数据经公共代理抓取各站 RSS,偶有源/代理临时失败属正常,点对应卡片右上角「重试」即可。
+  想增删网站:用文本编辑器打开本文件,修改顶部 <code>SOURCES</code> 列表后保存刷新。
+</div>
+
+<script>
+/* ============================================================
+   📌 想抓哪些网站,改这里就行(name=显示名,url=RSS 地址,max=条数)
+   下面默认是针对美股盘前的一套源,可自由增删。
+   ============================================================ */
+const SOURCES = [
+  // 🔥 突发卡:不限来源、最近6小时、"主题 AND 烈度"——只留既是市场主题、措辞又猛/意外的突发
+  { name:'🔥 突发 · 影响美股', url:'https://news.google.com/rss/search?q=when%3A6h%20(stocks%20OR%20%22stock%20market%22%20OR%20%22S%26P%20500%22%20OR%20Nasdaq%20OR%20Dow%20OR%20futures%20OR%20Fed%20OR%20FOMC%20OR%20CPI%20OR%20inflation%20OR%20%22interest%20rates%22%20OR%20Treasury%20OR%20yields%20OR%20earnings%20OR%20guidance%20OR%20tariffs%20OR%20oil%20OR%20recession%20OR%20merger%20OR%20bankruptcy%20OR%20layoffs)%20(surge%20OR%20soar%20OR%20jump%20OR%20rally%20OR%20plunge%20OR%20plummet%20OR%20tumble%20OR%20sink%20OR%20slump%20OR%20crash%20OR%20%22sell-off%22%20OR%20halt%20OR%20beats%20OR%20misses%20OR%20warns%20OR%20cuts%20OR%20slashes%20OR%20record%20OR%20unexpected%20OR%20surprise%20OR%20breaking%20OR%20hotter%20OR%20cooler)&hl=en-US&gl=US&ceid=US:en', max:10 },
+  { name:'CNBC · 财经头条', url:'https://www.cnbc.com/id/100003114/device/rss/rss.html', max:8 },
+  { name:'CNBC · 市场',     url:'https://www.cnbc.com/id/15839069/device/rss/rss.html', max:8 }, // Investing 源:更新频繁、偏市场(旧的 20910258 其实是低频的"经济"源,所以总是几天前)
+  // 以下三家是"站点 + 主题词过滤"(只用名词主题组,不加烈度词,免得漏掉重要但措辞平淡的政策新闻)
+  { name:'Reuters · 市场',  url:'https://news.google.com/rss/search?q=when%3A1d%20site%3Areuters.com%20(Fed%20OR%20CPI%20OR%20inflation%20OR%20%22interest%20rates%22%20OR%20Treasury%20OR%20yields%20OR%20earnings%20OR%20guidance%20OR%20tariffs%20OR%20%22trade%20war%22%20OR%20oil%20OR%20recession%20OR%20GDP%20OR%20jobs%20OR%20merger%20OR%20acquisition%20OR%20bankruptcy%20OR%20layoffs%20OR%20stocks%20OR%20%22stock%20market%22)&hl=en-US&gl=US&ceid=US:en', max:8 },
+  { name:'Bloomberg · 市场',url:'https://news.google.com/rss/search?q=when%3A1d%20site%3Abloomberg.com%20(Fed%20OR%20CPI%20OR%20inflation%20OR%20%22interest%20rates%22%20OR%20Treasury%20OR%20yields%20OR%20earnings%20OR%20guidance%20OR%20tariffs%20OR%20%22trade%20war%22%20OR%20oil%20OR%20recession%20OR%20GDP%20OR%20jobs%20OR%20merger%20OR%20acquisition%20OR%20bankruptcy%20OR%20layoffs%20OR%20stocks%20OR%20%22stock%20market%22)&hl=en-US&gl=US&ceid=US:en', max:8 },
+  { name:'WSJ · 市场',      url:'https://news.google.com/rss/search?q=when%3A1d%20site%3Awsj.com%20(Fed%20OR%20CPI%20OR%20inflation%20OR%20%22interest%20rates%22%20OR%20Treasury%20OR%20yields%20OR%20earnings%20OR%20guidance%20OR%20tariffs%20OR%20%22trade%20war%22%20OR%20oil%20OR%20recession%20OR%20GDP%20OR%20jobs%20OR%20merger%20OR%20acquisition%20OR%20bankruptcy%20OR%20layoffs%20OR%20stocks%20OR%20%22stock%20market%22)&hl=en-US&gl=US&ceid=US:en', max:8 },
+  { name:'MarketWatch',     url:'https://news.google.com/rss/search?q=when:1d%20site:marketwatch.com&hl=en-US&gl=US&ceid=US:en', max:8 },
+  { name:'Yahoo Finance',   url:'https://news.google.com/rss/search?q=when:1d%20site:finance.yahoo.com&hl=en-US&gl=US&ceid=US:en', max:8 },
+  { name:'美股盘前 · 综合', url:'https://news.google.com/rss/search?q=US%20stock%20market%20premarket%20OR%20futures%20when:1d&hl=en-US&gl=US&ceid=US:en', max:8 },
+  { name:'华尔街见闻',      url:'https://news.google.com/rss/search?q=when:1d%20site:wallstreetcn.com&hl=zh-CN&gl=CN&ceid=CN:zh-Hans', max:8 },
+  { name:'美股 · 中文综合', url:'https://news.google.com/rss/search?q=美股%20when:1d&hl=zh-CN&gl=CN&ceid=CN:zh-Hans', max:8 },
+];
+
+/* 兜底 CORS 代理(主力是下面的 rss2json),并行竞速,谁先返回有效 RSS 用谁 */
+const PROXIES = [
+  u => `https://api.allorigins.win/raw?url=${encodeURIComponent(u)}`,
+  u => `https://corsproxy.io/?url=${encodeURIComponent(u)}`,
+];
+
+const CACHE_KEY = 'premarket_news_cache_v1';
+const grid = document.getElementById('grid');
+const cards = {}; // name -> {ul, status}
+
+/* ---------- 构建卡片骨架 ---------- */
+function buildCards(){
+  SOURCES.forEach(s=>{
+    const card = document.createElement('div'); card.className='card';
+    const head = document.createElement('div'); head.className='card-head';
+    const name = document.createElement('span'); name.className='name'; name.textContent=s.name;
+    const status = document.createElement('span'); status.className='status'; status.textContent='待刷新';
+    const retry = document.createElement('button'); retry.className='retry'; retry.textContent='重试';
+    retry.onclick = ()=> loadOne(s);
+    head.append(name,status,retry);
+    const ul = document.createElement('ul');
+    card.append(head,ul); grid.append(card);
+    cards[s.name] = {ul,status};
+  });
+}
+
+/* ---------- 抓取 + 解析单个源 ---------- */
+async function fetchWithTimeout(url, ms=9000){
+  const c=new AbortController(); const t=setTimeout(()=>c.abort(), ms);
+  try{ return await fetch(url,{cache:'no-store',signal:c.signal}); }
+  finally{ clearTimeout(t); }
+}
+const deadline = ms => new Promise((_,rej)=>setTimeout(()=>rej(new Error('超时')), ms));
+
+// Google News 会在标题尾部加 "- 来源"(如 "...rates - Reuters"),卡片已标来源,去掉它
+// 否则中英对照时会被翻成 "- 路透中文网/- 彭博社" 造成"全是中文网"的错觉
+function cleanTitle(t){
+  t=(t||'').trim();
+  const i=t.lastIndexOf(' - ');
+  if(i>20 && (t.length-i-3)<=32) return t.slice(0,i).trim(); // 尾段够短(像来源名)才去掉
+  return t;
+}
+
+function mapJsonItems(items, max){
+  return items.slice(0,max).map(it=>({
+    title:cleanTitle(it.title), link:it.link||'#',
+    // rss2json 的 pubDate 是 UTC 但无时区标记,补 'Z' 否则会被当本地时间算错
+    date: it.pubDate ? it.pubDate.replace(' ','T')+'Z' : ''
+  }));
+}
+
+// 渠道 A:rss2json(返回 JSON;命中缓存时最快,但新源会被限流)
+async function viaRss2json(url, max){
+  const api='https://api.rss2json.com/v1/api.json?rss_url='+encodeURIComponent(url);
+  const r = await Promise.race([fetchWithTimeout(api, 9000), deadline(10000)]);
+  if(!r.ok) throw new Error('rss2json HTTP '+r.status);
+  const j = await Promise.race([r.json(), deadline(4000)]);
+  if(j && j.status==='ok' && Array.isArray(j.items) && j.items.length) return mapJsonItems(j.items, max);
+  throw new Error('rss2json '+((j&&j.status)||'empty'));
+}
+
+// 渠道 B:CORS 代理抓 XML(rss2json 限流新源时由它兜底)
+async function tryProxy(wrap, url, ms){
+  const r = await Promise.race([fetchWithTimeout(wrap(url), ms), deadline(ms+1500)]);
+  if(!r.ok) throw new Error('HTTP '+r.status);
+  const txt = await Promise.race([r.text(), deadline(ms+1500)]); // 防 body 读取卡死
+  if(txt && /<(rss|feed|item|entry)[\s>]/i.test(txt)) return txt; // 确认是 RSS,挡错误页
+  throw new Error('非 RSS 响应');
+}
+async function viaProxy(wrap, url, max){ return parseFeed(await tryProxy(wrap, url, 8000), max); }
+
+/* 取一个源:rss2json 与各代理"同时竞速",谁先拿到有效头条用谁;整轮失败再重试一次 */
+async function fetchItems(url, max){
+  const race = ()=> Promise.any([ viaRss2json(url,max), ...PROXIES.map(w=>viaProxy(w,url,max)) ]);
+  try{ return await race(); }
+  catch(e){ await new Promise(r=>setTimeout(r, 900)); return await race(); }
+}
+
+/* 并发限制器:同时最多 n 个,避免代理限流 */
+async function runLimited(items, worker, n){
+  let i=0;
+  await Promise.all(Array.from({length:Math.min(n,items.length)}, async()=>{
+    while(i<items.length){ await worker(items[i++]); }
+  }));
+}
+
+function parseFeed(xml, max){
+  const doc = new DOMParser().parseFromString(xml, 'text/xml');
+  if(doc.querySelector('parsererror')) throw new Error('解析失败');
+  let items = [...doc.querySelectorAll('item')];
+  if(!items.length) items = [...doc.querySelectorAll('entry')]; // Atom
+  return items.slice(0,max).map(it=>{
+    const title = cleanTitle(it.querySelector('title')?.textContent||'');
+    let link = it.querySelector('link')?.textContent?.trim();
+    if(!link){ link = it.querySelector('link')?.getAttribute('href') || '#'; }
+    const date = it.querySelector('pubDate')?.textContent
+              || it.querySelector('updated')?.textContent
+              || it.querySelector('published')?.textContent || '';
+    return {title, link, date};
+  }).filter(x=>x.title);
+}
+
+function timeAgo(str){
+  if(!str) return '';
+  const d=new Date(str); if(isNaN(d)) return '';
+  const s=(Date.now()-d.getTime())/1000;
+  if(s<60) return '刚刚';
+  if(s<3600) return Math.floor(s/60)+' 分钟前';
+  if(s<86400) return Math.floor(s/3600)+' 小时前';
+  return Math.floor(s/86400)+' 天前';
+}
+
+const lastItems = {}; // name -> items,用于切换对照时重渲染
+
+function renderItems(name, items){
+  lastItems[name] = items;
+  const ul = cards[name].ul; ul.innerHTML='';
+  if(!items.length){ ul.innerHTML='<div class="empty">暂无内容</div>'; return; }
+  items.forEach(it=>{
+    const li=document.createElement('li');
+    const a=document.createElement('a');
+    a.href=it.link; a.target='_blank'; a.rel='noopener'; a.textContent=it.title;
+    li.append(a);
+    if(bilingual){
+      const tl=document.createElement('div'); tl.className='tl-line pending'; tl.textContent='翻译中…';
+      li.append(tl);
+      translate(it.title).then(tx=>{
+        if(tx){ tl.textContent=tx; tl.classList.remove('pending'); }
+        else { tl.remove(); }
+      });
+    }
+    const t=timeAgo(it.date);
+    if(t){ const sp=document.createElement('div'); sp.className='t'; sp.textContent=t; li.append(sp); }
+    ul.append(li);
+  });
+}
+
+/* ============== 中英对照:免费翻译 + 缓存 + 并发限制 ============== */
+let bilingual = localStorage.getItem('pm_bilingual') !== '0';
+const TR_KEY='pm_trans_cache_v1';
+function getTransCache(){ try{ return JSON.parse(localStorage.getItem(TR_KEY))||{}; }catch{ return {}; } }
+function saveTransCache(c){ try{ localStorage.setItem(TR_KEY, JSON.stringify(c)); }catch{} }
+const isCJK = t => /[一-鿿]/.test(t);
+
+// 并发队列(最多 4 个同时翻译,避免被限流)
+const trQ=[]; let trActive=0;
+function enqueue(fn){ return new Promise(res=>{ trQ.push({fn,res}); pump(); }); }
+function pump(){ while(trActive<4 && trQ.length){ const {fn,res}=trQ.shift(); trActive++;
+  fn().then(res).catch(()=>res('')).finally(()=>{ trActive--; pump(); }); } }
+
+async function translate(text){
+  const tl = isCJK(text) ? 'en' : 'zh-CN';
+  const sl = isCJK(text) ? 'zh-CN' : 'en';
+  const key = tl+'|'+text;
+  const cache = getTransCache();
+  if(cache[key]) return cache[key];
+  const out = await enqueue(()=>doTranslate(text, sl, tl));
+  if(out){ cache[key]=out; saveTransCache(cache); }
+  return out;
+}
+
+async function doTranslate(text, sl, tl){
+  const g = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=${tl}&dt=t&q=${encodeURIComponent(text)}`;
+  // 1) Google 直连  2) Google 经代理  3) MyMemory
+  const tries = [ ()=>fetch(g,{cache:'no-store'}),
+                  ...PROXIES.map(w=>()=>fetch(w(g),{cache:'no-store'})) ];
+  for(const t of tries){
+    try{
+      const r=await t(); if(!r.ok) continue;
+      const j=await r.json();
+      const s=(j[0]||[]).map(x=>x[0]).join('').trim();
+      if(s) return s;
+    }catch{}
+  }
+  try{
+    const m=`https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=${sl}|${tl}`;
+    const r=await fetch(m); const j=await r.json();
+    const s=(j.responseData?.translatedText||'').trim();
+    if(s && !/MYMEMORY WARNING/i.test(s)) return s;
+  }catch{}
+  return '';
+}
+
+function reRenderAll(){ SOURCES.forEach(s=>{ if(lastItems[s.name]) renderItems(s.name, lastItems[s.name]); }); }
+
+async function loadOne(s){
+  const c=cards[s.name];
+  c.status.innerHTML='<span class="spin"></span>抓取中';
+  try{
+    const items=await fetchItems(s.url, s.max);
+    renderItems(s.name, items);
+    c.status.textContent=items.length+' 条';
+    saveCache(s.name, items);
+  }catch(e){
+    c.status.textContent='失败';
+    if(!c.ul.children.length || c.ul.querySelector('.error,.loading')){
+      c.ul.innerHTML='<div class="error">抓取失败:'+(e.message||e)+'</div>';
+    }
+  }
+}
+
+/* ---------- 缓存(重新打开时先显示上次结果) ---------- */
+function saveCache(name, items){
+  let c={}; try{ c=JSON.parse(localStorage.getItem(CACHE_KEY))||{}; }catch{}
+  c[name]=items; c.__ts=Date.now();
+  localStorage.setItem(CACHE_KEY, JSON.stringify(c));
+}
+function loadCache(){
+  let c; try{ c=JSON.parse(localStorage.getItem(CACHE_KEY)); }catch{ return false; }
+  if(!c) return false;
+  SOURCES.forEach(s=>{ if(c[s.name]){ renderItems(s.name,c[s.name]); cards[s.name].status.textContent='缓存'; }});
+  if(c.__ts) setUpdated(new Date(c.__ts), true);
+  return true;
+}
+
+function setUpdated(d, cached){
+  const z=n=>String(n).padStart(2,'0');
+  document.getElementById('lastUpdated').textContent =
+    (cached?'上次刷新 ':'已更新 ')+`${d.getFullYear()}-${z(d.getMonth()+1)}-${z(d.getDate())} ${z(d.getHours())}:${z(d.getMinutes())}`;
+}
+
+async function refreshAll(){
+  const btn=document.getElementById('refresh');
+  btn.disabled=true; btn.textContent='⟳ 抓取中…';
+  await runLimited(SOURCES, loadOne, 2);
+  setUpdated(new Date(), false);
+  btn.disabled=false; btn.textContent='⟳ 刷新';
+}
+
+document.getElementById('refresh').onclick=refreshAll;
+
+const biBox=document.getElementById('bi');
+biBox.checked=bilingual;
+biBox.onchange=()=>{ bilingual=biBox.checked;
+  localStorage.setItem('pm_bilingual', bilingual?'1':'0'); reRenderAll(); };
+
+/* ---------- 手机小应用:动态生成图标 + manifest(保持单文件) ---------- */
+(function installPWA(){
+  const icon="<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'>"
+    +"<rect width='512' height='512' rx='110' fill='#0d1117'/>"
+    +"<polyline points='64,348 188,232 280,300 410,150' fill='none' stroke='#26d07c' stroke-width='30' stroke-linecap='round' stroke-linejoin='round'/>"
+    +"<polyline points='330,150 410,150 410,232' fill='none' stroke='#26d07c' stroke-width='30' stroke-linecap='round' stroke-linejoin='round'/></svg>";
+  const iconUrl='data:image/svg+xml,'+encodeURIComponent(icon);
+  // iOS 主屏图标
+  const al=document.createElement('link'); al.rel='apple-touch-icon'; al.href=iconUrl; document.head.appendChild(al);
+  // Android/Chrome manifest(用 Blob,免单独文件)
+  try{
+    const dir=location.pathname.replace(/[^/]*$/,'');   // 当前目录,随便放哪都对
+    const manifest={ name:'美股盘前头条', short_name:'盘前头条',
+      start_url:location.pathname, scope:dir,
+      display:'standalone', orientation:'portrait', background_color:'#0d1117', theme_color:'#0d1117',
+      icons:[{src:iconUrl, sizes:'512x512', type:'image/svg+xml', purpose:'any maskable'}] };
+    const ml=document.createElement('link'); ml.rel='manifest';
+    ml.href=URL.createObjectURL(new Blob([JSON.stringify(manifest)],{type:'application/manifest+json'}));
+    document.head.appendChild(ml);
+  }catch(e){}
+})();
+
+/* 启动:先建卡片→显示缓存→无缓存则自动抓一次 */
+buildCards();
+if(!loadCache()) refreshAll();
+</script>
+</body>
+</html>

@@ -107,13 +107,26 @@
 const SOURCES = [
   // 🔥 突发卡:不限来源、最近6小时、"主题 AND 烈度"——只留既是市场主题、措辞又猛/意外的突发
   { name:'🔥 突发 · 影响美股', url:'https://news.google.com/rss/search?q=when%3A6h%20(stocks%20OR%20%22stock%20market%22%20OR%20%22S%26P%20500%22%20OR%20Nasdaq%20OR%20Dow%20OR%20futures%20OR%20Fed%20OR%20FOMC%20OR%20CPI%20OR%20inflation%20OR%20%22interest%20rates%22%20OR%20Treasury%20OR%20yields%20OR%20earnings%20OR%20guidance%20OR%20tariffs%20OR%20oil%20OR%20recession%20OR%20merger%20OR%20bankruptcy%20OR%20layoffs)%20(surge%20OR%20soar%20OR%20jump%20OR%20rally%20OR%20plunge%20OR%20plummet%20OR%20tumble%20OR%20sink%20OR%20slump%20OR%20crash%20OR%20%22sell-off%22%20OR%20halt%20OR%20beats%20OR%20misses%20OR%20warns%20OR%20cuts%20OR%20slashes%20OR%20record%20OR%20unexpected%20OR%20surprise%20OR%20breaking%20OR%20hotter%20OR%20cooler)&hl=en-US&gl=US&ceid=US:en', max:10 },
+  // 🏛️ 美联储官方直连(绕开 Google News,实时):FOMC 声明/政策公告一发即收录。Google News 系卡片有索引延迟,Fed 大事靠这张秒报。
+  //    想单独看"讲话原文"可再加:https://www.federalreserve.gov/feeds/speeches.xml
+  { name:'🏛️ 美联储 · 官方', url:'https://www.federalreserve.gov/feeds/press_all.xml', max:8 },
+  // 📈 商务部 BEA 官方 RSS:PCE(美联储最看重的通胀=Personal Income and Outlays)、GDP、个人收支、贸易,数据一发即收录。
+  //    注:BLS(非农/CPI/PPI)封锁了服务器抓取且无 CORS,浏览器拿不到官方 feed —— 那几个数据靠新闻卡秒报、日历卡看时间。
+  { name:'📈 BEA · PCE / GDP', url:'https://apps.bea.gov/rss/rss.xml', max:8 },
+  // 📊 复刻 IBKR「Daily Lineup → Today's Top Ten」:它聚合 Dow Jones / StreetInsider / Reuters / Refinitiv 四家。
+  //    IBKR 原版锁在账户登录后(无公开 feed、跨域),抓不了;这里用 Google News 限定同源组合近似:
+  //    Dow Jones≈WSJ/MarketWatch/Barron's(同属道琼斯)、Reuters=Refinitiv、StreetInsider(盘前异动/评级)。max:10 取"十大"。
+  { name:'📊 今日十大 · IBKR 同款', url:'https://news.google.com/rss/search?q=when%3A1d%20(site%3Areuters.com%20OR%20site%3Astreetinsider.com%20OR%20site%3Awsj.com%20OR%20site%3Amarketwatch.com%20OR%20site%3Abarrons.com)%20(Fed%20OR%20CPI%20OR%20inflation%20OR%20earnings%20OR%20tariffs%20OR%20oil%20OR%20stocks%20OR%20%22stock%20market%22%20OR%20Nasdaq%20OR%20Dow%20OR%20upgrade%20OR%20downgrade%20OR%20%22price%20target%22)&hl=en-US&gl=US&ceid=US:en', max:10 },
+  // 📅 经济日历(结构化"预定事件",不是新闻):faireconomy 周历 XML。只有 thisweek 存在(覆盖本周日→周六);nextweek/thismonth 已 404,故免费源拿不到"下周"。
+  //    cal:true 触发自定义解析(parseCalendar):只取 美国(USD) + 全球高影响,剔除低影响噪音,只留未来事件,按时间升序。feed 时间是 UTC,显示时转本地。
+  { name:'📅 经济日历 · 本周', cal:true, url:'https://nfs.faireconomy.media/ff_calendar_thisweek.xml', max:25 },
   { name:'CNBC · 财经头条', url:'https://www.cnbc.com/id/100003114/device/rss/rss.html', max:8 },
   { name:'CNBC · 市场',     url:'https://www.cnbc.com/id/15839069/device/rss/rss.html', max:8 }, // Investing 源:更新频繁、偏市场(旧的 20910258 其实是低频的"经济"源,所以总是几天前)
   // 以下三家是"站点 + 主题词过滤"(只用名词主题组,不加烈度词,免得漏掉重要但措辞平淡的政策新闻)
   { name:'Reuters · 市场',  url:'https://news.google.com/rss/search?q=when%3A1d%20site%3Areuters.com%20(Fed%20OR%20CPI%20OR%20inflation%20OR%20%22interest%20rates%22%20OR%20Treasury%20OR%20yields%20OR%20earnings%20OR%20guidance%20OR%20tariffs%20OR%20%22trade%20war%22%20OR%20oil%20OR%20recession%20OR%20GDP%20OR%20jobs%20OR%20merger%20OR%20acquisition%20OR%20bankruptcy%20OR%20layoffs%20OR%20stocks%20OR%20%22stock%20market%22)&hl=en-US&gl=US&ceid=US:en', max:8 },
   { name:'Bloomberg · 市场',url:'https://news.google.com/rss/search?q=when%3A1d%20site%3Abloomberg.com%20(Fed%20OR%20CPI%20OR%20inflation%20OR%20%22interest%20rates%22%20OR%20Treasury%20OR%20yields%20OR%20earnings%20OR%20guidance%20OR%20tariffs%20OR%20%22trade%20war%22%20OR%20oil%20OR%20recession%20OR%20GDP%20OR%20jobs%20OR%20merger%20OR%20acquisition%20OR%20bankruptcy%20OR%20layoffs%20OR%20stocks%20OR%20%22stock%20market%22)&hl=en-US&gl=US&ceid=US:en', max:8 },
   { name:'WSJ · 市场',      url:'https://news.google.com/rss/search?q=when%3A1d%20site%3Awsj.com%20(Fed%20OR%20CPI%20OR%20inflation%20OR%20%22interest%20rates%22%20OR%20Treasury%20OR%20yields%20OR%20earnings%20OR%20guidance%20OR%20tariffs%20OR%20%22trade%20war%22%20OR%20oil%20OR%20recession%20OR%20GDP%20OR%20jobs%20OR%20merger%20OR%20acquisition%20OR%20bankruptcy%20OR%20layoffs%20OR%20stocks%20OR%20%22stock%20market%22)&hl=en-US&gl=US&ceid=US:en', max:8 },
-  { name:'MarketWatch',     url:'https://news.google.com/rss/search?q=when:1d%20site:marketwatch.com&hl=en-US&gl=US&ceid=US:en', max:8 },
+  { name:'MarketWatch',     url:'https://feeds.content.dowjones.io/public/rss/mw_topstories', max:8 }, // 直连发布商 RSS(实时),取代原 Google News 搜索版,消除索引延迟
   { name:'Yahoo Finance',   url:'https://news.google.com/rss/search?q=when:1d%20site:finance.yahoo.com&hl=en-US&gl=US&ceid=US:en', max:8 },
   { name:'美股盘前 · 综合', url:'https://news.google.com/rss/search?q=US%20stock%20market%20premarket%20OR%20futures%20when:1d&hl=en-US&gl=US&ceid=US:en', max:8 },
   { name:'华尔街见闻',      url:'https://news.google.com/rss/search?q=when:1d%20site:wallstreetcn.com&hl=zh-CN&gl=CN&ceid=CN:zh-Hans', max:8 },
@@ -163,12 +176,16 @@ function cleanTitle(t){
   return t;
 }
 
+// 按时间倒序(最新在前)。Google News 默认按"相关度"排,会把十几小时前的旧文排在最新文之上,
+// 还可能把最新的挤出前 max 条被砍掉。所以先排序、再截断,保证每张卡顶部就是最新。
+const byNew=(a,b)=>(Date.parse(b.date)||0)-(Date.parse(a.date)||0);
+
 function mapJsonItems(items, max){
-  return items.slice(0,max).map(it=>({
+  return items.map(it=>({
     title:cleanTitle(it.title), link:it.link||'#',
     // rss2json 的 pubDate 是 UTC 但无时区标记,补 'Z' 否则会被当本地时间算错
     date: it.pubDate ? it.pubDate.replace(' ','T')+'Z' : ''
-  }));
+  })).sort(byNew).slice(0,max);
 }
 
 // 渠道 A:rss2json(返回 JSON;命中缓存时最快,但新源会被限流)
@@ -191,11 +208,63 @@ async function tryProxy(wrap, url, ms){
 }
 async function viaProxy(wrap, url, max){ return parseFeed(await tryProxy(wrap, url, 8000), max); }
 
-/* 取一个源:rss2json 与各代理"同时竞速",谁先拿到有效头条用谁;整轮失败再重试一次 */
+// 渠道 C:浏览器直连(仅对开了 CORS 的源有效,如 CNBC/MarketWatch/多数官方 feed)。
+// 不依赖任何第三方,最快最稳;没开 CORS 的源(美联储/Google News)会被浏览器拦下、自动落败,不影响竞速。
+async function viaDirect(url, max){
+  const r = await Promise.race([fetchWithTimeout(url, 8000), deadline(9000)]);
+  if(!r.ok) throw new Error('direct HTTP '+r.status);
+  const txt = await Promise.race([r.text(), deadline(4000)]);
+  if(txt && /<(rss|feed|item|entry)[\s>]/i.test(txt)) return parseFeed(txt, max);
+  throw new Error('direct 非 RSS');
+}
+
+/* 取一个源:直连 + rss2json + 各代理"同时竞速",谁先拿到有效头条用谁;整轮失败再重试一次 */
 async function fetchItems(url, max){
-  const race = ()=> Promise.any([ viaRss2json(url,max), ...PROXIES.map(w=>viaProxy(w,url,max)) ]);
+  const race = ()=> Promise.any([ viaDirect(url,max), viaRss2json(url,max), ...PROXIES.map(w=>viaProxy(w,url,max)) ]);
   try{ return await race(); }
   catch(e){ await new Promise(r=>setTimeout(r, 900)); return await race(); }
+}
+
+/* ===== 📅 经济日历(faireconomy 周历:结构化预定事件,非新闻)=====
+   feed 无 CORS、且不是 RSS(rss2json 不认),所以走"直连+代理"拿原始 XML,再用 parseCalendar 自定义解析 */
+function calTs(d, t){            // 日期 MM-DD-YYYY + 时间如 "8:30am"(UTC)→ 毫秒
+  if(!d) return NaN;
+  const p=d.split('-').map(Number); if(p.length<3 || !p[2]) return NaN;
+  let hh=0, mm=0; const m=/^(\d{1,2}):(\d{2})\s*(am|pm)$/i.exec((t||'').trim());
+  if(m){ hh=(+m[1])%12; if(/pm/i.test(m[3])) hh+=12; mm=+m[2]; }
+  return Date.UTC(p[2], p[0]-1, p[1], hh, mm);
+}
+function calWhen(ts){           // UTC 毫秒 → 本地"周X M/D HH:MM"(全天/待定无时间)
+  if(isNaN(ts)) return '时间待定';
+  const d=new Date(ts), z=n=>String(n).padStart(2,'0');
+  return ['周日','周一','周二','周三','周四','周五','周六'][d.getDay()]
+    +` ${d.getMonth()+1}/${d.getDate()} ${z(d.getHours())}:${z(d.getMinutes())}`;
+}
+function parseCalendar(xml, max){
+  const doc=new DOMParser().parseFromString(xml,'text/xml');
+  const now=Date.now();
+  return [...doc.querySelectorAll('event')].map(e=>{
+    const g=t=>e.querySelector(t)?.textContent?.trim()||'';
+    return { cal:true, title:g('title'), country:g('country'), impact:g('impact'),
+             forecast:g('forecast'), previous:g('previous'), link:g('url')||'#',
+             ts:calTs(g('date'), g('time')) };
+  })
+  .filter(e=> (e.country==='USD' || e.impact==='High') && e.impact!=='Low')  // 美国 + 全球高影响,剔除低影响噪音
+  .filter(e=> isNaN(e.ts) ? true : e.ts >= now-30*60000)                     // 只留未来(容忍刚过去 30 分钟)
+  .sort((a,b)=>(a.ts||0)-(b.ts||0))
+  .slice(0,max);
+}
+async function calRaw(wrap, url){ // 取原始 XML 并确认含 <event>(挡错误页)
+  const r = await Promise.race([fetchWithTimeout(wrap?wrap(url):url, 8000), deadline(9500)]);
+  if(!r.ok) throw new Error('HTTP '+r.status);
+  const txt = await Promise.race([r.text(), deadline(4000)]);
+  if(/<event[\s>]/i.test(txt)) return txt;
+  throw new Error('非日历XML');
+}
+async function fetchCalendar(url, max){
+  const race=()=>Promise.any([ calRaw(null,url), ...PROXIES.map(w=>calRaw(w,url)) ]); // 直连多被 CORS 拦,无害落败
+  let xml; try{ xml=await race(); }catch(e){ await new Promise(r=>setTimeout(r,900)); xml=await race(); }
+  return parseCalendar(xml, max);
 }
 
 /* 并发限制器:同时最多 n 个,避免代理限流 */
@@ -211,7 +280,7 @@ function parseFeed(xml, max){
   if(doc.querySelector('parsererror')) throw new Error('解析失败');
   let items = [...doc.querySelectorAll('item')];
   if(!items.length) items = [...doc.querySelectorAll('entry')]; // Atom
-  return items.slice(0,max).map(it=>{
+  return items.map(it=>{
     const title = cleanTitle(it.querySelector('title')?.textContent||'');
     let link = it.querySelector('link')?.textContent?.trim();
     if(!link){ link = it.querySelector('link')?.getAttribute('href') || '#'; }
@@ -219,7 +288,7 @@ function parseFeed(xml, max){
               || it.querySelector('updated')?.textContent
               || it.querySelector('published')?.textContent || '';
     return {title, link, date};
-  }).filter(x=>x.title);
+  }).filter(x=>x.title).sort(byNew).slice(0,max);
 }
 
 function timeAgo(str){
@@ -241,7 +310,12 @@ function renderItems(name, items){
   items.forEach(it=>{
     const li=document.createElement('li');
     const a=document.createElement('a');
-    a.href=it.link; a.target='_blank'; a.rel='noopener'; a.textContent=it.title;
+    a.href=it.link; a.target='_blank'; a.rel='noopener';
+    // 日历卡:标题前加影响级别圆点(🔴高/🟠中/🏖️假期)
+    if(it.cal){
+      const dot = it.impact==='High'?'🔴':it.impact==='Medium'?'🟠':it.impact==='Holiday'?'🏖️':'⚪';
+      a.textContent = dot+' '+it.title;
+    } else a.textContent = it.title;
     li.append(a);
     if(bilingual){
       const tl=document.createElement('div'); tl.className='tl-line pending'; tl.textContent='翻译中…';
@@ -251,8 +325,15 @@ function renderItems(name, items){
         else { tl.remove(); }
       });
     }
-    const t=timeAgo(it.date);
-    if(t){ const sp=document.createElement('div'); sp.className='t'; sp.textContent=t; li.append(sp); }
+    if(it.cal){   // 日历:显示 本地时间 · 预期 · 前值
+      let line=calWhen(it.ts);
+      if(it.forecast) line+=' · 预期 '+it.forecast;
+      if(it.previous) line+=' · 前值 '+it.previous;
+      const sp=document.createElement('div'); sp.className='t'; sp.textContent=line; li.append(sp);
+    } else {
+      const t=timeAgo(it.date);
+      if(t){ const sp=document.createElement('div'); sp.className='t'; sp.textContent=t; li.append(sp); }
+    }
     ul.append(li);
   });
 }
@@ -309,7 +390,7 @@ async function loadOne(s){
   const c=cards[s.name];
   c.status.innerHTML='<span class="spin"></span>抓取中';
   try{
-    const items=await fetchItems(s.url, s.max);
+    const items = s.cal ? await fetchCalendar(s.url, s.max) : await fetchItems(s.url, s.max);
     renderItems(s.name, items);
     c.status.textContent=items.length+' 条';
     saveCache(s.name, items);

@@ -119,7 +119,7 @@ const SOURCES = [
   { name:'📊 今日十大 · IBKR 同款', url:'https://news.google.com/rss/search?q=when%3A1d%20(site%3Areuters.com%20OR%20site%3Astreetinsider.com%20OR%20site%3Awsj.com%20OR%20site%3Amarketwatch.com%20OR%20site%3Abarrons.com)%20(Fed%20OR%20CPI%20OR%20inflation%20OR%20earnings%20OR%20tariffs%20OR%20oil%20OR%20stocks%20OR%20%22stock%20market%22%20OR%20Nasdaq%20OR%20Dow%20OR%20upgrade%20OR%20downgrade%20OR%20%22price%20target%22)&hl=en-US&gl=US&ceid=US:en', max:10 },
   // 📅 经济日历(结构化"预定事件",不是新闻):faireconomy 周历 XML。只有 thisweek 存在(覆盖本周日→周六);nextweek/thismonth 已 404,故免费源拿不到"下周"。
   //    cal:true 触发自定义解析(parseCalendar):只取 美国(USD) + 全球高影响,剔除低影响噪音,只留未来事件,按时间升序。feed 时间是 UTC,显示时转本地。
-  { name:'📅 经济日历 · 本周', cal:true, url:'https://nfs.faireconomy.media/ff_calendar_thisweek.xml', max:25 },
+  { name:'📅 经济日历 · 本周', cal:true, url:'https://nfs.faireconomy.media/ff_calendar_thisweek.xml', max:40 },
   { name:'CNBC · 财经头条', url:'https://www.cnbc.com/id/100003114/device/rss/rss.html', max:8 },
   { name:'CNBC · 市场',     url:'https://www.cnbc.com/id/15839069/device/rss/rss.html', max:8 }, // Investing 源:更新频繁、偏市场(旧的 20910258 其实是低频的"经济"源,所以总是几天前)
   // 以下三家是"站点 + 主题词过滤"(只用名词主题组,不加烈度词,免得漏掉重要但措辞平淡的政策新闻)
@@ -242,7 +242,6 @@ function calWhen(ts){           // UTC 毫秒 → 本地"周X M/D HH:MM"(全天/
 }
 function parseCalendar(xml, max){
   const doc=new DOMParser().parseFromString(xml,'text/xml');
-  const now=Date.now();
   return [...doc.querySelectorAll('event')].map(e=>{
     const g=t=>e.querySelector(t)?.textContent?.trim()||'';
     return { cal:true, title:g('title'), country:g('country'), impact:g('impact'),
@@ -250,8 +249,7 @@ function parseCalendar(xml, max){
              ts:calTs(g('date'), g('time')) };
   })
   .filter(e=> (e.country==='USD' || e.impact==='High') && e.impact!=='Low')  // 美国 + 全球高影响,剔除低影响噪音
-  .filter(e=> isNaN(e.ts) ? true : e.ts >= now-30*60000)                     // 只留未来(容忍刚过去 30 分钟)
-  .sort((a,b)=>(a.ts||0)-(b.ts||0))
+  .sort((a,b)=>(a.ts||0)-(b.ts||0))   // 固定显示整周(周日→周六)按时间升序;过去的不删,只在渲染时变暗
   .slice(0,max);
 }
 async function calRaw(wrap, url){ // 取原始 XML 并确认含 <event>(挡错误页)
@@ -325,8 +323,10 @@ function renderItems(name, items){
         else { tl.remove(); }
       });
     }
-    if(it.cal){   // 日历:显示 本地时间 · 预期 · 前值
-      let line=calWhen(it.ts);
+    if(it.cal){   // 日历:显示 本地时间 · 预期 · 前值;已过去的保留但变暗 + 标"✓ 已公布"(整周固定可见)
+      const past = !isNaN(it.ts) && it.ts < Date.now();
+      if(past) li.style.opacity='.45';
+      let line = (past?'✓ 已公布 · ':'') + calWhen(it.ts);
       if(it.forecast) line+=' · 预期 '+it.forecast;
       if(it.previous) line+=' · 前值 '+it.previous;
       const sp=document.createElement('div'); sp.className='t'; sp.textContent=line; li.append(sp);

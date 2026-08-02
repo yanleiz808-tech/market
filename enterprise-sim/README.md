@@ -105,3 +105,14 @@ docker compose exec kiwi /Kiwi/manage.py createsuperuser
 | 跨部门报表 | 全部 | 汇总库存/项目/测试通过率生成周报 |
 
 > `seed/` 目录存放种子数据脚本与说明，用于快速灌入一家虚拟公司的基础数据。
+
+## 7. 可直接运行的场景
+
+`scenarios/` 下提供两个端到端、可脚本一键跑通的业务场景：
+
+| 场景 | 部门 | 系统 | 链路 |
+|---|---|---|---|
+| [库存管理 + 拣货出库](scenarios/inventory-fulfillment/README.md) | 供应链 | Odoo | 销售单 → 确认 → 出库单 → 预留 → 拣货 → 出库扣库存 |
+| [通信测试部门](scenarios/telecom-testing/README.md) | 研发测试 | Kiwi TCMS | 测试计划 → 用例定义 → 评审 → 执行 → 统计报表 |
+
+每个场景目录内含一个幂等种子脚本（`seed_*.py`）和一份业务流程说明（UI 步骤 + AI/API 演练点）。

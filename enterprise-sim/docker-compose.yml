@@ -1,0 +1,148 @@
+# =============================================================================
+# 企业模拟环境 —— 供应链部门 + 研发测试部门
+# 用于模拟 AI Agent 工作场景（API 优先、全部可自托管、开源）
+#
+# 用法（按需启动子集，profile 可组合）：
+#   docker compose --profile erp up -d            # 只启 Odoo(ERP/供应链)
+#   docker compose --profile test up -d           # 只启 Kiwi TCMS(测试管理)
+#   docker compose --profile pm up -d             # 只启 OpenProject(项目管理)
+#   docker compose --profile rnd up -d            # 只启 Gitea(代码托管)
+#   docker compose --profile glue up -d           # 只启 n8n(自动化编排)
+#   docker compose --profile all up -d            # 全部启动(≈6-8GB 内存)
+# =============================================================================
+
+x-common: &restart
+  restart: unless-stopped
+
+services:
+  # ---------------------------------------------------------------------------
+  # 供应链部门：Odoo 17 CE —— 采购 / 库存 / 制造(MRP) / 销售
+  #   UI:  http://localhost:8069   (首次进入创建数据库并安装模块)
+  #   API: JSON-RPC /jsonrpc, XML-RPC /xmlrpc/2/
+  # ---------------------------------------------------------------------------
+  odoo-db:
+    image: postgres:16
+    profiles: ["erp", "all"]
+    <<: *restart
+    environment:
+      POSTGRES_USER: odoo
+      POSTGRES_PASSWORD: ${ODOO_DB_PASSWORD:-odoo}
+      POSTGRES_DB: postgres
+    volumes:
+      - odoo-db-data:/var/lib/postgresql/data
+
+  odoo:
+    image: odoo:17
+    profiles: ["erp", "all"]
+    <<: *restart
+    depends_on: [odoo-db]
+    ports:
+      - "8069:8069"
+    environment:
+      HOST: odoo-db
+      USER: odoo
+      PASSWORD: ${ODOO_DB_PASSWORD:-odoo}
+    volumes:
+      - odoo-data:/var/lib/odoo
+
+  # ---------------------------------------------------------------------------
+  # 研发测试部门：Kiwi TCMS —— 测试用例 / 测试计划 / 测试执行
+  #   UI:  https://localhost:8444   (自签名证书，浏览器需忽略警告)
+  #   API: JSON-RPC /json-rpc/
+  #   首次启动后需初始化，见 README「Kiwi 初始化」
+  # ---------------------------------------------------------------------------
+  kiwi-db:
+    image: mariadb:10.11
+    profiles: ["test", "all"]
+    <<: *restart
+    environment:
+      MARIADB_ROOT_PASSWORD: ${KIWI_DB_ROOT:-kiwi-root}
+      MARIADB_DATABASE: kiwi
+      MARIADB_USER: kiwi
+      MARIADB_PASSWORD: ${KIWI_DB_PASSWORD:-kiwi}
+      MARIADB_CHARSET: utf8mb4
+      MARIADB_COLLATE: utf8mb4_unicode_ci
+    volumes:
+      - kiwi-db-data:/var/lib/mysql
+
+  kiwi:
+    image: kiwitcms/kiwi:latest
+    profiles: ["test", "all"]
+    <<: *restart
+    depends_on: [kiwi-db]
+    ports:
+      - "8081:8080"    # HTTP
+      - "8444:8443"    # HTTPS
+    environment:
+      KIWI_DB_HOST: kiwi-db
+      KIWI_DB_PORT: "3306"
+      KIWI_DB_NAME: kiwi
+      KIWI_DB_USER: kiwi
+      KIWI_DB_PASSWORD: ${KIWI_DB_PASSWORD:-kiwi}
+    volumes:
+      - kiwi-uploads:/Kiwi/uploads
+
+  # ---------------------------------------------------------------------------
+  # 项目管理：OpenProject（一体化镜像，内置自己的 Postgres）
+  #   UI:  http://localhost:8082   (首次登录 admin/admin，需改密码)
+  #   API: REST v3 /api/v3/
+  # ---------------------------------------------------------------------------
+  openproject:
+    image: openproject/openproject:14
+    profiles: ["pm", "all"]
+    <<: *restart
+    ports:
+      - "8082:80"
+    environment:
+      OPENPROJECT_HOST__NAME: localhost:8082
+      OPENPROJECT_HTTPS: "false"
+      OPENPROJECT_SECRET_KEY_BASE: ${OPENPROJECT_SECRET:-please-change-me}
+      OPENPROJECT_DEFAULT__LANGUAGE: zh-CN
+    volumes:
+      - op-data:/var/openproject/assets
+      - op-pgdata:/var/openproject/pgdata
+
+  # ---------------------------------------------------------------------------
+  # 研发：Gitea —— 代码托管 + Webhook（可驱动 CI / AI 触发）
+  #   UI:  http://localhost:3000   (首次访问完成安装向导，DB 选 SQLite)
+  #   API: /api/v1/
+  # ---------------------------------------------------------------------------
+  gitea:
+    image: gitea/gitea:1.22
+    profiles: ["rnd", "all"]
+    <<: *restart
+    environment:
+      GITEA__database__DB_TYPE: sqlite3
+      GITEA__server__ROOT_URL: http://localhost:3000/
+    ports:
+      - "3000:3000"
+      - "2222:22"
+    volumes:
+      - gitea-data:/data
+
+  # ---------------------------------------------------------------------------
+  # 全局自动化编排：n8n —— AI Agent 的「神经中枢」
+  #   跨部门流程编排：测试失败 → ERP 建质量单 → 通知 PM
+  #   UI:  http://localhost:5678
+  # ---------------------------------------------------------------------------
+  n8n:
+    image: n8nio/n8n:latest
+    profiles: ["glue", "all"]
+    <<: *restart
+    ports:
+      - "5678:5678"
+    environment:
+      N8N_SECURE_COOKIE: "false"
+      GENERIC_TIMEZONE: Asia/Shanghai
+    volumes:
+      - n8n-data:/home/node/.n8n
+
+volumes:
+  odoo-db-data:
+  odoo-data:
+  kiwi-db-data:
+  kiwi-uploads:
+  op-data:
+  op-pgdata:
+  gitea-data:
+  n8n-data:

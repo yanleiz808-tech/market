@@ -8,7 +8,8 @@
 #   docker compose --profile pm up -d             # 只启 OpenProject(项目管理)
 #   docker compose --profile rnd up -d            # 只启 Gitea(代码托管)
 #   docker compose --profile glue up -d           # 只启 n8n(自动化编排)
-#   docker compose --profile all up -d            # 全部启动(≈6-8GB 内存)
+#   docker compose --profile docs up -d           # 只启 Nextcloud(企业文档协同)
+#   docker compose --profile all up -d            # 全部启动(≈8-10GB 内存)
 # =============================================================================
 
 x-common: &restart
@@ -137,6 +138,48 @@ services:
     volumes:
       - n8n-data:/home/node/.n8n
 
+  # ---------------------------------------------------------------------------
+  # 企业文档协同：Nextcloud（SharePoint 开源平替）
+  #   文档共享 / 版本管理 / 在线协同编辑（配合内置 CODE 服务器）
+  #   UI:  http://localhost:8083   (首次访问创建管理员账号)
+  #   API: WebDAV /remote.php/dav, OCS /ocs/v2.php
+  # ---------------------------------------------------------------------------
+  nextcloud-db:
+    image: postgres:16
+    profiles: ["docs", "all"]
+    <<: *restart
+    environment:
+      POSTGRES_DB: nextcloud
+      POSTGRES_USER: nextcloud
+      POSTGRES_PASSWORD: ${NEXTCLOUD_DB_PASSWORD:-nextcloud}
+    volumes:
+      - nextcloud-db-data:/var/lib/postgresql/data
+
+  nextcloud-redis:
+    image: redis:7-alpine
+    profiles: ["docs", "all"]
+    <<: *restart
+
+  nextcloud:
+    image: nextcloud:29-apache
+    profiles: ["docs", "all"]
+    <<: *restart
+    depends_on: [nextcloud-db, nextcloud-redis]
+    ports:
+      - "8083:80"
+    environment:
+      POSTGRES_HOST: nextcloud-db
+      POSTGRES_DB: nextcloud
+      POSTGRES_USER: nextcloud
+      POSTGRES_PASSWORD: ${NEXTCLOUD_DB_PASSWORD:-nextcloud}
+      REDIS_HOST: nextcloud-redis
+      NEXTCLOUD_ADMIN_USER: ${NEXTCLOUD_ADMIN_USER:-admin}
+      NEXTCLOUD_ADMIN_PASSWORD: ${NEXTCLOUD_ADMIN_PASSWORD:-admin123456}
+      NEXTCLOUD_TRUSTED_DOMAINS: localhost
+      OVERWRITECLIURL: http://localhost:8083
+    volumes:
+      - nextcloud-data:/var/www/html
+
 volumes:
   odoo-db-data:
   odoo-data:
@@ -146,3 +189,5 @@ volumes:
   op-pgdata:
   gitea-data:
   n8n-data:
+  nextcloud-db-data:
+  nextcloud-data:

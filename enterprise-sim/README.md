@@ -31,8 +31,9 @@
 | `pm`   | OpenProject | 项目管理 | http://localhost:8082 | REST `/api/v3` |
 | `rnd`  | Gitea       | 研发：代码托管 | http://localhost:3000 | REST `/api/v1` |
 | `glue` | n8n         | 自动化编排 | http://localhost:5678 | Webhook |
+| `docs` | Nextcloud   | 企业文档协同(SharePoint 平替) | http://localhost:8083 | WebDAV / OCS |
 
-> 硬件建议：全量启动约需 **6–8GB 内存**。资源有限时按 profile 启动子集。
+> 硬件建议：全量启动约需 **8–10GB 内存**。资源有限时按 profile 启动子集。
 
 ## 3. 快速开始
 
@@ -114,5 +115,6 @@ docker compose exec kiwi /Kiwi/manage.py createsuperuser
 |---|---|---|---|
 | [库存管理 + 拣货出库](scenarios/inventory-fulfillment/README.md) | 供应链 | Odoo | 销售单 → 确认 → 出库单 → 预留 → 拣货 → 出库扣库存 |
 | [通信测试部门](scenarios/telecom-testing/README.md) | 研发测试 | Kiwi TCMS | 测试计划 → 用例定义 → 评审 → 执行 → 统计报表 |
+| [企业文档协同](scenarios/document-collaboration/README.md) | 供应链 + 研发 | Nextcloud | 文档共享 → 协同编辑 → 版本管理 → 按部门归档 |
 
 每个场景目录内含一个幂等种子脚本（`seed_*.py`）和一份业务流程说明（UI 步骤 + AI/API 演练点）。

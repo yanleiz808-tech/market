@@ -9,6 +9,7 @@
 #   docker compose --profile rnd up -d            # 只启 Gitea(代码托管)
 #   docker compose --profile glue up -d           # 只启 n8n(自动化编排)
 #   docker compose --profile docs up -d           # 只启 Nextcloud(企业文档协同)
+#   docker compose --profile issues up -d         # 只启 Redmine(问题跟踪/Jira 平替)
 #   docker compose --profile all up -d            # 全部启动(≈8-10GB 内存)
 # =============================================================================
 
@@ -180,6 +181,39 @@ services:
     volumes:
       - nextcloud-data:/var/www/html
 
+  # ---------------------------------------------------------------------------
+  # 问题跟踪：Redmine（Jira 平替）—— 建/管 Bug、Feature、Task 工单
+  #   开箱自带 Bug / Feature / Support 三种工单类型，支持工作流流转、版本、看板
+  #   UI:  http://localhost:8084   (首次登录 admin/admin，需改密码)
+  #   API: REST /issues.json 等（需在 管理→设置→API 里开启）
+  # ---------------------------------------------------------------------------
+  redmine-db:
+    image: postgres:16
+    profiles: ["issues", "all"]
+    <<: *restart
+    environment:
+      POSTGRES_DB: redmine
+      POSTGRES_USER: redmine
+      POSTGRES_PASSWORD: ${REDMINE_DB_PASSWORD:-redmine}
+    volumes:
+      - redmine-db-data:/var/lib/postgresql/data
+
+  redmine:
+    image: redmine:5.1
+    profiles: ["issues", "all"]
+    <<: *restart
+    depends_on: [redmine-db]
+    ports:
+      - "8084:3000"
+    environment:
+      REDMINE_DB_POSTGRES: redmine-db
+      REDMINE_DB_DATABASE: redmine
+      REDMINE_DB_USERNAME: redmine
+      REDMINE_DB_PASSWORD: ${REDMINE_DB_PASSWORD:-redmine}
+      REDMINE_SECRET_KEY_BASE: ${REDMINE_SECRET:-please-change-me-redmine}
+    volumes:
+      - redmine-files:/usr/src/redmine/files
+
 volumes:
   odoo-db-data:
   odoo-data:
@@ -191,3 +225,5 @@ volumes:
   n8n-data:
   nextcloud-db-data:
   nextcloud-data:
+  redmine-db-data:
+  redmine-files:

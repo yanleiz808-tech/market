@@ -10,7 +10,10 @@
 #   docker compose --profile glue up -d           # 只启 n8n(自动化编排)
 #   docker compose --profile docs up -d           # 只启 Nextcloud(企业文档协同)
 #   docker compose --profile issues up -d         # 只启 Redmine(问题跟踪/Jira 平替)
-#   docker compose --profile all up -d            # 全部启动(≈8-10GB 内存)
+#   docker compose --profile chat up -d           # 只启 Mattermost(团队沟通/Teams 平替)
+#   docker compose --profile mail up -d           # 只启 邮件服务器+网页邮箱(Outlook 平替)
+#   docker compose --profile bi up -d             # 只启 Metabase(BI 报表/Power BI 平替)
+#   docker compose --profile all up -d            # 全部启动(≈12-14GB 内存)
 # =============================================================================
 
 x-common: &restart
@@ -214,6 +217,111 @@ services:
     volumes:
       - redmine-files:/usr/src/redmine/files
 
+  # ---------------------------------------------------------------------------
+  # 团队沟通：Mattermost（Teams 平替）—— 频道 / 私聊 / 文件分享
+  #   UI:  http://localhost:8065   (首次访问创建管理员并建团队)
+  #   API: REST /api/v4/, Incoming/Outgoing Webhook
+  # ---------------------------------------------------------------------------
+  mattermost-db:
+    image: postgres:16
+    profiles: ["chat", "all"]
+    <<: *restart
+    environment:
+      POSTGRES_DB: mattermost
+      POSTGRES_USER: mmuser
+      POSTGRES_PASSWORD: ${MATTERMOST_DB_PASSWORD:-mmuser-pass}
+    volumes:
+      - mattermost-db-data:/var/lib/postgresql/data
+
+  mattermost:
+    image: mattermost/mattermost-team-edition:9.11
+    profiles: ["chat", "all"]
+    <<: *restart
+    depends_on: [mattermost-db]
+    ports:
+      - "8065:8065"
+    environment:
+      MM_SQLSETTINGS_DRIVERNAME: postgres
+      MM_SQLSETTINGS_DATASOURCE: "postgres://mmuser:${MATTERMOST_DB_PASSWORD:-mmuser-pass}@mattermost-db:5432/mattermost?sslmode=disable&connect_timeout=10"
+      MM_SERVICESETTINGS_SITEURL: http://localhost:8065
+    volumes:
+      - mattermost-data:/mattermost/data
+      - mattermost-config:/mattermost/config
+
+  # ---------------------------------------------------------------------------
+  # 邮件：docker-mailserver + Roundcube（Outlook 平替，真·多账号收发）
+  #   网页邮箱: http://localhost:8086   (类似 Outlook Web，用邮箱账号登录)
+  #   账号需用 setup 命令创建，见 scenarios/email/README.md
+  #   API: 标准 IMAP(10143) / SMTP(10587)，供 AI 收发
+  # ---------------------------------------------------------------------------
+  mailserver:
+    image: mailserver/docker-mailserver:latest
+    profiles: ["mail", "all"]
+    <<: *restart
+    hostname: mail.corp.local
+    ports:
+      - "10025:25"
+      - "10143:143"
+      - "10587:587"
+      - "10993:993"
+    environment:
+      ENABLE_FAIL2BAN: "0"
+      PERMIT_DOCKER: network
+      SSL_TYPE: ""          # 本地模拟，不启用 TLS
+      ONE_DIR: "1"
+    cap_add: [NET_ADMIN]
+    volumes:
+      - mail-data:/var/mail
+      - mail-state:/var/mail-state
+      - mail-logs:/var/log/mail
+      - mail-config:/tmp/docker-mailserver
+
+  roundcube:
+    image: roundcube/roundcubemail:latest
+    profiles: ["mail", "all"]
+    <<: *restart
+    depends_on: [mailserver]
+    ports:
+      - "8086:80"
+    environment:
+      ROUNDCUBEMAIL_DEFAULT_HOST: mailserver
+      ROUNDCUBEMAIL_DEFAULT_PORT: "143"
+      ROUNDCUBEMAIL_SMTP_SERVER: mailserver
+      ROUNDCUBEMAIL_SMTP_PORT: "587"
+    volumes:
+      - roundcube-data:/var/www/html
+
+  # ---------------------------------------------------------------------------
+  # BI 报表：Metabase（Power BI 平替）—— 连各库出 quality 仪表盘
+  #   UI:  http://localhost:3002   (首次创建管理员，添加数据源)
+  #   可连 odoo-db / kiwi-db / redmine-db 做跨系统质量分析
+  # ---------------------------------------------------------------------------
+  metabase-db:
+    image: postgres:16
+    profiles: ["bi", "all"]
+    <<: *restart
+    environment:
+      POSTGRES_DB: metabase
+      POSTGRES_USER: metabase
+      POSTGRES_PASSWORD: ${METABASE_DB_PASSWORD:-metabase}
+    volumes:
+      - metabase-db-data:/var/lib/postgresql/data
+
+  metabase:
+    image: metabase/metabase:latest
+    profiles: ["bi", "all"]
+    <<: *restart
+    depends_on: [metabase-db]
+    ports:
+      - "3002:3000"
+    environment:
+      MB_DB_TYPE: postgres
+      MB_DB_DBNAME: metabase
+      MB_DB_PORT: "5432"
+      MB_DB_USER: metabase
+      MB_DB_PASS: ${METABASE_DB_PASSWORD:-metabase}
+      MB_DB_HOST: metabase-db
+
 volumes:
   odoo-db-data:
   odoo-data:
@@ -227,3 +335,12 @@ volumes:
   nextcloud-data:
   redmine-db-data:
   redmine-files:
+  mattermost-db-data:
+  mattermost-data:
+  mattermost-config:
+  mail-data:
+  mail-state:
+  mail-logs:
+  mail-config:
+  roundcube-data:
+  metabase-db-data:
